@@ -1,0 +1,148 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import argparse
+import json
+from tempfile import mkdtemp
+from string import Template
+import os
+import subprocess
+import shutil
+import datetime
+
+
+class SanjiDeb(object):
+    """Sanji Deb"""
+    """
+    /workspace
+        /src
+        /package
+    """
+    def __init__(self, inputArgs):
+        self.args = inputArgs
+        self.install_prefix = self.args.prefix
+
+        # Remove first "/" change to relative path
+        for index, c in enumerate(self.args.prefix):
+            if c == "/":
+                continue
+            self.install_prefix = self.args.prefix[index:]
+            break
+
+        self.tempdir = self.args.tempdir
+        self.workspace = ""
+        self.debian_dir = ""
+        self.root = os.path.abspath(os.path.dirname(__file__))
+        self.templates_dir = os.path.join(self.root, "templates")
+
+    def load_bundle(self):
+        """Load bundle.json file"""
+        with open(
+             os.path.join(self.workspace, "src", "bundle.json"), "r") as f:
+            self.bundle = json.load(f)
+
+    def create_workspace(self):
+        """Create workspace"""
+        self.workspace = mkdtemp(prefix="SanjiDeb_", dir=self.args.tempdir)
+
+    def create_debian_dir(self, base):
+        """Create debian folder in workspace"""
+        self.debian_dir = os.path.join(self.workspace, "DEBIAN")
+        os.makedirs(self.debian_dir)
+
+    def create_debian_control(self):
+        """Create DEBIAN/control from bundle.json"""
+        defaults = {
+            "commit_hash": self.args.commit,
+            "arch": "all",
+            "debDepends": "",
+            "homepage": "http://www.moxa.com",
+            "longDescription": ""
+        }
+
+        control_data = dict(defaults.items() + self.bundle.items())
+        control_data["longDescription"] = \
+            "> Created at %s" % (datetime.datetime.now().isoformat())
+
+        template = None
+
+        with open(os.path.join(self.templates_dir, 'control'), 'r') as f:
+            template = Template(f.read())
+
+        with open(os.path.join(self.debian_dir, 'control'), 'w') as f:
+            f.write(template.safe_substitute(control_data))
+
+    def install_src(self):
+        """Install source to prefix/name"""
+        os.makedirs(os.path.join(self.workspace, self.install_prefix))
+        src_path = os.path.join(
+            self.workspace, self.install_prefix, self.bundle["name"])
+
+        shutil.move(os.path.join(self.workspace, "src"), src_path)
+
+        return src_path
+
+    def fetch_src(self):
+        """Get source from assigned git repo"""
+        # git archive master | tar -x -C /somewhere/else
+        os.mkdir(os.path.join(self.workspace, 'src'))
+        subprocess.call(
+            "git archive --remote %s %s | tar -x -C %s" %
+            (self.args.repo, self.args.commit,
+             os.path.join(self.workspace, 'src')),
+            shell=True)
+
+    def create_deb_package(self):
+        """Create debian package from workspace"""
+        subprocess.call(["dpkg-deb", "-b", self.workspace], stdout=None)
+
+        deb_filepath = os.path.join(
+            self.tempdir, "sanji-bundle-%s-%s.deb" %
+            (self.bundle["name"], self.bundle["version"]))
+
+        # Move SanjiDeb_xxxx to sanji-bundle-name.deb
+        shutil.move("%s.deb" % (self.workspace), deb_filepath)
+
+        return deb_filepath
+
+    def make_deb(self):
+        """Packing final result into .deb"""
+        self.create_workspace()
+        self.fetch_src()
+        self.load_bundle()
+        self.src_path = self.install_src()
+        self.create_debian_dir(self.workspace)
+        self.create_debian_control()
+        self.create_deb_package()
+
+
+parser = argparse.ArgumentParser(description="Sanji Deb Packing Tool")
+parser.add_argument(
+    "-c", "--commit",
+    default="master",
+    help="packing with commit (default: master)")
+
+parser.add_argument(
+    "-o", "--output",
+    default="/tmp",
+    help="output deb file directory (default: /tmp)")
+
+parser.add_argument(
+    "-t", "--tempdir",
+    default="/tmp",
+    help="temp directory (default: /tmp)")
+
+parser.add_argument(
+    "-r", "--repo",
+    default=os.getcwd(),
+    help="Git repository location (default: ${PWD})")
+
+parser.add_argument(
+    "-p", "--prefix",
+    default="/opt/moxa/sanji/bundles",
+    help="Install prefix (default: /opt/moxa/sanji/bundles)")
+
+args = parser.parse_args()
+
+sanjideb = SanjiDeb(args)
+sanjideb.make_deb()

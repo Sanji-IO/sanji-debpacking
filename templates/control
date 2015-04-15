@@ -1,0 +1,10 @@
+Package: sanji-bundle-${name}
+Version: ${version}-${commit_hash}
+Architecture: ${arch}
+Maintainer: ${author} <${email}>
+Depends: ${debDepends}
+Section: utils
+Priority: optional
+Homepage: ${homepage}
+Description: ${description}
+ ${longDescription}
