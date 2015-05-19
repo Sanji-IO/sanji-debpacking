@@ -55,7 +55,7 @@ class SanjiDeb(object):
         defaults = {
             "commit_hash": self.args.commit,
             "arch": "all",
-            "debDepends": "",
+            "debDepends": "python",
             "homepage": "http://www.moxa.com",
             "longDescription": ""
         }
@@ -97,7 +97,7 @@ class SanjiDeb(object):
         subprocess.call(["dpkg-deb", "-b", self.workspace], stdout=None)
 
         deb_filepath = os.path.join(
-            self.tempdir, "sanji-bundle-%s-%s.deb" %
+            self.tempdir, "sanji-bundle-%s_%s_all.deb" %
             (self.bundle["name"], self.bundle["version"]))
 
         # Move SanjiDeb_xxxx to sanji-bundle-name.deb
